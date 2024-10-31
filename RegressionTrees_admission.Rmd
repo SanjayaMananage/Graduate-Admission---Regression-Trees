@@ -1,0 +1,283 @@
+---
+title: "Decission Trees - Admission"
+author: "Sanjaya Mananage"
+date: "2023-06-14"
+output: pdf_document
+
+header-includes: 
+   - \usepackage{float}
+   - \floatplacement{figure}{H}
+   - \usepackage{caption}
+   - \captionsetup[figure]{font=scriptsize}
+   - \captionsetup[table]{font=scriptsize}
+geometry: "left=1cm,right=1cm,top=0.5cm,bottom=0.5cm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+\flushleft
+
+\newpage
+
+
+Here I considered the Graduate Admission 2 data set([https://www.kaggle.com/datasets/mohansacharya/graduate-admissions](https://www.kaggle.com/datasets/mohansacharya/graduate-admissions)). This data set is created for prediction of Graduate Admissions from an Indian perspective. The data set contains several parameters which are considered important during the application for Masters Programs. The sample size is 400. Take Chance.of.Admit as the quantitative response variable. Among the predictors, Research is a qualitative variable and treat University Rating as a quantitative variable. Take all the data as training data. For all the models ,I used leave-one-out cross-validation (LOOCV) to compute the estimated test MSE.
+
+
+```{r echo=FALSE}
+Admission.data<-read.csv("Admission_Predict.csv")##Read training data set
+attach(Admission.data)## Attach the data set
+Admission.data$Research<-as.factor(Admission.data$Research)##Factor the variable Research
+Admission.data<-Admission.data[,-1]
+```
+
+## Initially I fit a regression tree to the data and summarize the results.
+
+```{r,echo=FALSE}
+##a.
+library(tree)
+
+Admission.tree <- tree(Chance.of.Admit ~ ., data=Admission.data)
+sumry<-summary(Admission.tree)
+sumry
+```
+The Variables actually used in tree construction are "CGPA" "GRE.Score". There are 8 nodes and residual mean deviance is 0.004479. The distribution of residuals is given below.
+
+
+```{r}
+summary(sumry$residuals)
+```
+
+\begin{table}[H]
+\centering
+\begin{tabular}{rrrrrr}
+\hline
+ Min. & 1st Qu.&  Median   & Mean &3rd Qu.  &  Max. \\
+\hline
+-0.276250 & -0.028824 & 0.005122 & 0.000000 &  0.041176 & 0.217931\\
+\hline
+\end{tabular}
+\caption{The distribution of residuals}
+\end{table}
+
+## Here I display the tree graphically and explicitly describe the regions corresponding to the terminal nodes that provide a partition of the predictor space (i.e., provide expressions for the regions $R_1; ... ;R_J$ ).
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Regression tree for Admission data",  out.width = "100%"}
+# Plot the tree
+plot(Admission.tree)
+text(Admission.tree, pretty = 0, cex = 0.5)
+```
+
+Let $R_j$ be the partitions of the predictor space.
+
+$$
+\begin{aligned}
+R_1 &=\{X \mid CGPA < 7.665 \} \\
+R_2 &=\{X \mid 7.665 \le CGPA < 8.035,GRE.Score <315.5 \} \\
+R_3 &=\{X \mid 7.665 \le CGPA < 8.035,315.5 \le GRE.Score  \} \\
+R_4 &=\{X \mid 8.035 \le CGPA < 8.735, GRE.Score < 317.5 \} \\
+R_5 &=\{X \mid 8.035 \le CGPA < 8.735, 317.5 \le GRE.Score  \} \\
+R_6 &=\{X \mid 8.735 \le CGPA < 9.055 \} \\
+R_7 &=\{X \mid 9.055 \le CGPA < 9.225 \} \\
+R_8 &=\{X \mid 9.225 \le CGPA \} \\
+\end{aligned}
+$$
+The test MSE using LOOCV
+
+```{r,echo=FALSE}
+LOOCV<-function(data){
+n<-length(data[,1])
+tree.pred.fit<-c()
+for (i in 1:n) {
+  newdata<-data[-i,]
+  testdata<-data[i,]
+  fit <- tree(Chance.of.Admit ~ ., newdata)
+  tree.pred.fit[i] <- predict(fit, testdata)
+}
+  MSE<- mean((tree.pred.fit - data$Chance.of.Admit)^2)
+  return(list(MSE=MSE))
+}
+test.MSE<-LOOCV(data=Admission.data)
+test.MSE
+```
+The test MSE using LOOCV is 0.005776329.
+
+## Used LOOCV to determine whether pruning is helpful and determined the optimal size for the pruned tree. 
+
+```{r include=FALSE}
+## b)
+set.seed(1)
+Admission.cv <- cv.tree(Admission.tree, FUN = prune.tree, K=10)
+best.pruned<-Admission.cv$size[which.min(Admission.cv$dev)]
+```
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Plot the estimated test error rate",  out.width = "100%"}
+plot(Admission.cv$size, Admission.cv$dev, type = "b")
+```
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Regression prune Tree for cancer data",  out.width = "100%"}
+## best pruned tree
+Admission.prune <- prune.tree(Admission.tree, best = 3,method = "deviance")
+#summary(Admission.prune)
+plot(Admission.prune)
+text(Admission.prune, pretty = 0)
+```
+
+
+
+```{r echo=FALSE}
+set.seed(1)
+LOOCV1b<-function(data){
+  n<-length(data[,1])
+  tree.pred.fit1b<-c()
+  for (i in 1:n) {
+    newdata<-data[-i,]
+    testdata<-data[i,]
+    fit1b <- prune.tree(Admission.tree, best = 3,method = "deviance",newdata = newdata)
+    tree.pred.fit1b[i] <- predict(fit1b, testdata)
+  }
+  MSE<- mean((tree.pred.fit1b - data$Chance.of.Admit)^2)
+  return(list(MSE=MSE))
+}
+test.MSE1b<-LOOCV1b(data=Admission.data)
+test.MSE1b
+```
+
+The pruned tree has three(3) terminal nodes(Figure 2) and the actual used variable in tree construction is "CGPA"(See Figure 3) and it is seems to be most important predictor. Using LOOCV method the test MSE for pruned tree with three terminal nodes is 0.007170241. Test MSE is greater than the un-pruned tree in part a.
+
+## Used a bagging approach to analyze the data with $B = 1000$. 
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+library(randomForest)
+```
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(1)
+Admission.bag <- randomForest(Chance.of.Admit ~ ., data = Admission.data,
+	mtry = 7, ntree = 1000, importance = TRUE)
+importance(Admission.bag)
+```
+```{r,echo=FALSE,fig.align="center",fig.cap="Variable importance measure for each predictor (Bagging)",  out.width = "100%"}
+varImpPlot(Admission.bag)
+```
+
+
+```{r include=FALSE}
+set.seed(1)
+LOOCV1c<-function(data){
+  n<-length(data[,1])
+  tree.pred.fit1c<-c()
+  for (i in 1:n) {
+    newdata<-data[-i,]
+    testdata<-data[i,]
+    fit1c <- randomForest(Chance.of.Admit ~ ., data = newdata,
+  	mtry = 7, ntree = 1000, importance = TRUE)
+    tree.pred.fit1c[i] <- predict(fit1c, testdata)
+  }
+  MSE<- mean((tree.pred.fit1c - data$Chance.of.Admit)^2)
+  return(list(MSE=MSE))
+}
+test.MSE1c<-LOOCV1c(data=Admission.data)
+test.MSE1c
+```
+
+Using bagging approach with $B=1000$, the Node purity plot (Figure 4) shows that the variables "CGPA"(IncNodePurity=6.42387033)is the most important predictors. 
+
+And the test MSE using LOOCV method is 0.004854975.
+
+## Used a random forest approach to analyze the data with $B = 1000$ and $m \approx p/3$.
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(1)
+Admission.forest <- randomForest(Chance.of.Admit ~ ., data = Admission.data,
+	mtry = 7/3, ntree = 1000, importance = TRUE)
+importance(Admission.forest)
+```
+
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Variable importance measure for each predictor (Random forest)",  out.width = "100%"}
+varImpPlot(Admission.forest)
+```
+
+
+```{r echo=FALSE}
+set.seed(1)
+LOOCV1d<-function(data){
+n<-length(data[,1])
+tree.pred.fit1d<-c()
+for (i in 1:n) {
+  newdata<-data[-i,]
+  testdata<-data[i,]
+  fit1d <- randomForest(Chance.of.Admit ~ ., data = newdata,
+	mtry = 7/3, ntree = 1000, importance = TRUE)
+  tree.pred.fit1d[i] <- predict(fit1d, testdata)
+}
+  MSE<- mean((tree.pred.fit1d - data$Chance.of.Admit)^2)
+  return(list(MSE=MSE))
+}
+test.MSE1d<-LOOCV1d(data=Admission.data)
+test.MSE1d
+```
+
+
+Using random forest approach with $B=1000$ the Node purity plot (Figure 5) shows that the variables "CGPA"(IncNodePurity=2.6027796) and "GRE.Score" (IncNodePurity=1.8247557)  are most important predictors. 
+
+And the test MSE using LOOCV method is 0.004408569.
+
+## Used a boosting approach to analyze the data with $B = 1000$, $d = 1$, and $\lambda = 0.01$. 
+
+```{r, include=FALSE}
+library(gbm)
+```
+
+```{r, include=FALSE}
+set.seed(1)
+Admission.boost <- gbm(Chance.of.Admit ~ ., data = Admission.data, distribution = "gaussian", n.trees = 1000, interaction.depth = 1,shrinkage = 0.01, verbose = F)
+```
+
+```{r,echo=FALSE,fig.cap="Relative influence Plot",fig.align="center", out.width = "80%"}
+x<-summary(Admission.boost)
+x
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+set.seed(1)
+LOOCV1e<-function(data){
+  n<-length(data[,1])
+  tree.pred.fit1e<-c()
+  for (i in 1:n) {
+    newdata<-data[-i,]
+    testdata<-data[i,]
+    fit1e<- gbm(Chance.of.Admit ~ ., data = newdata, distribution = "gaussian", n.trees = 1000, interaction.depth = 1,shrinkage = 0.01, verbose = F)
+    tree.pred.fit1e[i] <- predict(fit1e, testdata)
+  }
+  MSE<- mean((tree.pred.fit1e - data$Chance.of.Admit)^2)
+  return(list(MSE=MSE))
+}
+test.MSE1e<-LOOCV1e(data=Admission.data)
+test.MSE1e
+```
+
+Using bossting approach with $B=1000$, $d=1$ and $\lambda=0.01$, according to the Relative influence plot (Figure 6) it shows that the variables "CGPA" (rel.inf=69.8978024) and "GRE.Score" (rel.inf=17.8200041)  are most important predictors. And the test MSE using LOOCV method is 0.004488337.
+
+
+## Comparison of the results from the various methods. 
+
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|r|r|r|r|r|r|}
+\hline
+  & un-pruned tree &  pruned tree   & bagging & random-forest  & boosting  \\
+\hline
+Test MSE & 0.005776329 &  0.007170241 &   0.004854975 & 0.004408569 &  0.004488337  \\
+\hline
+\end{tabular}
+\caption{Test MSE for different approches}
+\end{table}
+
+When consider the four different approaches discussed above, pruned tree approach gives large test MSE(0.007170241) and random-forest approach gives the small test MSE(0.004408569). So random-forest approach should be recommended to analyse Admission data.
+
